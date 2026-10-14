@@ -58,63 +58,57 @@ export async function readSheet<K extends string>(
   let exceeded = false;
 
   try {
-    const workbook = new ExcelJS.stream.xlsx.WorkbookReader(
-      Readable.from([buffer]),
-      {
-        worksheets: 'emit',
-        sharedStrings: 'cache',
-        hyperlinks: 'ignore',
-        styles: 'cache', // needed to turn date/time-formatted numbers into Date
-        entries: 'ignore',
-      },
-    );
-
-    for await (const worksheet of workbook) {
-      for await (const row of worksheet) {
-        const values = row.values as unknown[];
-        if (!columnIndexes) {
-          const header = resolveHeader(values, columns);
-          if (header.missing.length > 0 || header.duplicated.length > 0) {
-            const problems = [
-              header.missing.length > 0
-                ? `faltan las columnas: ${header.missing.join(', ')}`
-                : '',
-              header.duplicated.length > 0
-                ? `columnas repetidas: ${header.duplicated.join(', ')}`
-                : '',
-            ].filter(Boolean);
-            return {
-              rows: [],
-              issues: [
-                {
-                  file,
-                  row: row.number,
-                  column: null,
-                  message: `Encabezados inválidos en la fila ${row.number}: ${problems.join('; ')}. Usa la plantilla.`,
-                },
-              ],
-            };
-          }
-          columnIndexes = header.indexes;
-          continue;
-        }
-
-        const mapped = {} as Record<K, unknown>;
-        let blank = true;
-        for (const [key, index] of columnIndexes) {
-          mapped[key] = values[index] ?? null;
-          if (!isBlankCell(mapped[key])) blank = false;
-        }
-        if (blank) continue;
-
-        if (rows.length >= maxRows) {
-          exceeded = true;
-          break;
-        }
-        rows.push({ row: row.number, values: mapped });
-      }
-      break; // only the first worksheet is imported
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as any);
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet || worksheet.rowCount === 0) {
+      return fileIssue(
+        `El archivo de ${FILE_LABEL[file]} está vacío. Usa la plantilla.`,
+      );
     }
+
+    worksheet.eachRow((row, rowNumber) => {
+      const values = row.values as unknown[];
+      if (!columnIndexes) {
+        const header = resolveHeader(values, columns);
+        if (header.missing.length > 0 || header.duplicated.length > 0) {
+          const problems = [
+            header.missing.length > 0
+              ? `faltan las columnas: ${header.missing.join(', ')}`
+              : '',
+            header.duplicated.length > 0
+              ? `columnas repetidas: ${header.duplicated.join(', ')}`
+              : '',
+          ].filter(Boolean);
+          issues.push({
+            file,
+            row: row.number,
+            column: null,
+            message: `Encabezados inválidos en la fila ${row.number}: ${problems.join('; ')}. Usa la plantilla.`,
+          });
+          columnIndexes = header.indexes; // prevents re-evaluating header
+          return false;
+        }
+        columnIndexes = header.indexes;
+        return;
+      }
+
+      if (issues.length > 0) return false;
+
+      const mapped = {} as Record<K, unknown>;
+      let blank = true;
+      for (const [key, index] of columnIndexes) {
+        mapped[key] = values[index] ?? null;
+        if (!isBlankCell(mapped[key])) blank = false;
+      }
+      if (blank) return;
+
+      if (rows.length >= maxRows) {
+        exceeded = true;
+        return false;
+      }
+      rows.push({ row: row.number, values: mapped });
+    });
   } catch {
     return fileIssue(
       `No se pudo leer el archivo de ${FILE_LABEL[file]}. Verifica que sea un Excel (.xlsx) válido y no esté dañado.`,

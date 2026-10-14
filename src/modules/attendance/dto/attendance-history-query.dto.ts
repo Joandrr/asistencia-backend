@@ -3,7 +3,7 @@ import { IsOptional, IsString } from 'class-validator';
 
 export class AttendanceHistoryQueryDto {
   @ApiPropertyOptional({
-    description: 'Filtrar historial por ID de materia (module_id)',
+    description: 'Filtrar historial por ID de módulo (module_id)',
     example: '1',
   })
   @IsOptional()

@@ -126,7 +126,7 @@ export class AttendanceService {
         scheduleId: schedule.id,
         enrollmentId: enrollment.id,
         moduleId: schedule.moduleId,
-        moduleName: enrollment.module?.name ?? 'Materia',
+        moduleName: enrollment.module?.name ?? 'Módulo',
         classDate: schedule.classDate,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
@@ -179,7 +179,7 @@ export class AttendanceService {
 
     if (!enrollment) {
       throw new ForbiddenException(
-        'El estudiante no se encuentra inscrito en este módulo/materia',
+        'El estudiante no se encuentra inscrito en este módulo',
       );
     }
 
@@ -350,7 +350,8 @@ export class AttendanceService {
 
       results.push({
         moduleId: enrollment.moduleId,
-        moduleName: enrollment.module?.name ?? 'Materia',
+        moduleName: enrollment.module?.name ?? 'Módulo',
+        isActive: enrollment.module?.isActive ?? false,
         stats: {
           totalSchedules: schedules.length,
           evaluatedTotal,

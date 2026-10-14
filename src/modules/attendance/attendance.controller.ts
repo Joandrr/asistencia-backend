@@ -49,9 +49,9 @@ export class AttendanceController {
 
   @Get('history')
   @ApiOperation({
-    summary: 'Historial de clases y asistencias agrupadas por materia para el estudiante autenticado',
+    summary: 'Historial de clases y asistencias agrupadas por módulo para el estudiante autenticado',
   })
-  @ApiResponse({ status: 200, description: 'Historial y estadísticas de asistencia por materia' })
+  @ApiResponse({ status: 200, description: 'Historial y estadísticas de asistencia por módulo' })
   async getHistory(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: AttendanceHistoryQueryDto,
