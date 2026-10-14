@@ -174,6 +174,7 @@ export class AttendanceService {
         studentId,
         moduleId: schedule.moduleId,
       },
+      relations: { student: true },
     });
 
     if (!enrollment) {
@@ -244,6 +245,10 @@ export class AttendanceService {
             id: savedAttendance.id,
             enrollmentId: enrollment.id,
             scheduleId: schedule.id,
+            classDate: schedule.classDate,
+            studentId,
+            registrationNo: enrollment.student?.registrationNo ?? null,
+            studentName: enrollment.student?.fullName ?? null,
             status,
             markedAt: realTimestamp,
           },
@@ -474,6 +479,7 @@ export class AttendanceService {
               notes: reason,
               studentId: enrollment.studentId,
               registrationNo: enrollment.student.registrationNo,
+              studentName: enrollment.student.fullName,
               scheduleId: schedule.id,
               classDate: schedule.classDate,
             },
