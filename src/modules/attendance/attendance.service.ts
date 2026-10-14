@@ -22,6 +22,12 @@ import { AcademicModulesService } from '../academic-modules/academic-modules.ser
 import { UserRole } from '../users/entities/user.entity';
 import { CorrectableStatus } from './dto/admin-correct-attendance.dto';
 
+const REQUESTED_STATUS: Record<CorrectableStatus, EffectiveStatus> = {
+  [AttendanceStatus.PRESENT]: 'present',
+  [AttendanceStatus.LATE]: 'late',
+  [AttendanceStatus.ABSENT]: 'absent',
+};
+
 @Injectable()
 export class AttendanceService {
   constructor(
@@ -434,8 +440,7 @@ export class AttendanceService {
           schedule.endTime,
           now,
         );
-        const requestedStatus: EffectiveStatus =
-          status === AttendanceStatus.PRESENT ? 'present' : 'absent';
+        const requestedStatus: EffectiveStatus = REQUESTED_STATUS[status];
         if (previousStatus === requestedStatus) {
           return {
             message:

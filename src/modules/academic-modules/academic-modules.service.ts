@@ -1,11 +1,20 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
+import { hash } from 'bcryptjs';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
+import { graceTimeFor, graceTimeSql } from '../../common/grace-period';
 import { AuditLog } from '../../database/entities/audit-log.entity';
 import { ClassSchedule } from '../../database/entities/class-schedule.entity';
 import { Enrollment } from '../../database/entities/enrollment.entity';
@@ -24,6 +33,7 @@ import {
   STUDENT_COLUMNS,
 } from './excel/parse-students';
 import { readSheet } from './excel/read-sheet';
+import { AddModuleStudentDto } from './dto/add-module-student.dto';
 import { hashPasswords } from './password-hasher';
 import { ImportFiles } from './xlsx-upload';
 
@@ -91,6 +101,7 @@ export class AcademicModulesService {
         name: module.name,
         // Modules are only activated when created, so createdAt is the activation time.
         activatedAt: module.createdAt,
+        graceMinutes: module.graceMinutes,
         studentsCount,
         schedulesCount,
         firstDate: range?.firstDate ?? null,
@@ -137,7 +148,12 @@ export class AcademicModulesService {
    * imported students and class dates, atomically. Previous modules and their
    * attendance stay in the database (RN-08); the new module starts empty.
    */
-  async activate(name: string, files: ImportFiles, actor: AuthenticatedUser) {
+  async activate(
+    name: string,
+    graceMinutes: number,
+    files: ImportFiles,
+    actor: AuthenticatedUser,
+  ) {
     // Never trust a previous preview: validate the files again.
     const analysis = await this.analyze(files);
     if (analysis.issues.length > 0) {
@@ -159,9 +175,7 @@ export class AcademicModulesService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        await manager.query('SELECT pg_advisory_xact_lock($1)', [
-          MODULE_ACTIVATION_LOCK_KEY,
-        ]);
+        await this.lockModuleChanges(manager);
 
         const moduleRepository = manager.getRepository(Module);
         const previous = await moduleRepository.findOne({
@@ -174,7 +188,7 @@ export class AcademicModulesService {
           );
         }
         const module = await moduleRepository.save(
-          moduleRepository.create({ name, isActive: true }),
+          moduleRepository.create({ name, isActive: true, graceMinutes }),
         );
 
         const studentIds: string[] = [];
@@ -256,15 +270,18 @@ export class AcademicModulesService {
                 classDate: schedule.classDate,
                 startTime: schedule.startTime,
                 endTime: schedule.endTime,
-                // RF-12: no lateness or tolerance in this version; grace_time is
-                // required by the schema, so it spans the whole class.
-                graceTime: schedule.endTime,
+                graceTime: graceTimeFor(
+                  schedule.startTime,
+                  schedule.endTime,
+                  graceMinutes,
+                ),
               })),
             )
             .execute();
         }
 
         const summary = {
+          graceMinutes,
           students: {
             total: analysis.students.length,
             new: newStudents.length,
@@ -313,6 +330,197 @@ export class AcademicModulesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Changes the active module's grace period. Only classes from today on are
+   * recalculated: past classes keep the tolerance they were marked with.
+   */
+  async updateGracePeriod(graceMinutes: number, actor: AuthenticatedUser) {
+    return this.dataSource.transaction(async (manager) => {
+      await this.lockModuleChanges(manager);
+      const moduleRepository = manager.getRepository(Module);
+      const module = await moduleRepository.findOne({
+        where: { isActive: true },
+      });
+      if (!module) throw new NotFoundException('No active module');
+
+      const previous = module.graceMinutes;
+      if (previous === graceMinutes) {
+        return { graceMinutes, updatedSchedules: 0, unchanged: true };
+      }
+
+      await moduleRepository.update({ id: module.id }, { graceMinutes });
+      const updated = await manager.query<Array<{ id: string }>>(
+        `UPDATE "class_schedules" s
+         SET "grace_time" = ${graceTimeSql('s', '$2')},
+             "updated_at" = CURRENT_TIMESTAMP
+         WHERE s."module_id" = $1 AND s."deleted_at" IS NULL
+           AND s."class_date" >= $3::date
+         RETURNING s."id"`,
+        [module.id, graceMinutes, this.today()],
+      );
+      // node-postgres returns [rows, rowCount] for UPDATE ... RETURNING.
+      const rows = (Array.isArray(updated[0]) ? updated[0] : updated) as Array<{
+        id: string;
+      }>;
+
+      const auditRepository = manager.getRepository(AuditLog);
+      await auditRepository.save(
+        auditRepository.create({
+          userId: actor.id,
+          moduleId: module.id,
+          action: 'module.grace_updated',
+          affectedEntity: 'modules',
+          affectedRecordId: module.id,
+          previousValue: { graceMinutes: previous },
+          newValue: { graceMinutes, updatedSchedules: rows.length },
+        }),
+      );
+
+      return { graceMinutes, updatedSchedules: rows.length, unchanged: false };
+    });
+  }
+
+  /**
+   * Enrolls one student in the active module (for students missing from the
+   * imported Excel). Existing accounts are reused; new ones get their
+   * registration number as initial password, like the import.
+   */
+  async addStudentToActiveModule(
+    dto: AddModuleStudentDto,
+    actor: AuthenticatedUser,
+  ) {
+    const known = await this.users.findOne({
+      where: { registrationNo: dto.registrationNo },
+      withDeleted: true,
+    });
+    // Hash outside the transaction so the connection is not held meanwhile.
+    let passwordHash = known
+      ? null
+      : await hash(dto.registrationNo, PASSWORD_HASH_COST);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await this.lockModuleChanges(manager);
+        const module = await manager
+          .getRepository(Module)
+          .findOne({ where: { isActive: true } });
+        if (!module) throw new NotFoundException('No active module');
+
+        const userRepository = manager.getRepository(User);
+        const owner = await userRepository.findOne({
+          where: { registrationNo: dto.registrationNo },
+          withDeleted: true,
+        });
+        if (owner && owner.role !== UserRole.STUDENT) {
+          throw new ConflictException(
+            'Registration number belongs to an administrator',
+          );
+        }
+        const emailOwner = await userRepository.findOne({
+          where: { email: dto.email },
+          withDeleted: true,
+        });
+        if (emailOwner && emailOwner.registrationNo !== dto.registrationNo) {
+          throw new ConflictException('Email is already used by another user');
+        }
+
+        let studentId: string;
+        let status: ImportStudentStatus;
+        if (owner) {
+          const enrolled = await manager.getRepository(Enrollment).findOne({
+            where: { studentId: owner.id, moduleId: module.id },
+          });
+          if (enrolled) {
+            throw new ConflictException(
+              'Student is already enrolled in the active module',
+            );
+          }
+          status = owner.deletedAt ? 'reactivated' : 'existing';
+          await userRepository.update(
+            { id: owner.id },
+            { fullName: dto.fullName, email: dto.email, deletedAt: null },
+          );
+          studentId = owner.id;
+        } else {
+          passwordHash ??= await hash(dto.registrationNo, PASSWORD_HASH_COST);
+          const created = await userRepository.save(
+            userRepository.create({
+              role: UserRole.STUDENT,
+              registrationNo: dto.registrationNo,
+              passwordHash,
+              fullName: dto.fullName,
+              email: dto.email,
+              degreeProgram: null,
+            }),
+          );
+          status = 'new';
+          studentId = created.id;
+        }
+
+        await manager
+          .getRepository(Enrollment)
+          .insert({ studentId, moduleId: module.id });
+
+        const auditRepository = manager.getRepository(AuditLog);
+        await auditRepository.save(
+          auditRepository.create({
+            userId: actor.id,
+            moduleId: module.id,
+            action: 'module.student_added',
+            affectedEntity: 'users',
+            affectedRecordId: studentId,
+            previousValue: owner
+              ? {
+                  fullName: owner.fullName,
+                  email: owner.email,
+                  deletedAt: owner.deletedAt,
+                }
+              : null,
+            newValue: {
+              status,
+              registrationNo: dto.registrationNo,
+              fullName: dto.fullName,
+              email: dto.email,
+            },
+          }),
+        );
+
+        return {
+          status,
+          student: {
+            id: studentId,
+            registrationNo: dto.registrationNo,
+            fullName: dto.fullName,
+            email: dto.email,
+          },
+          module: { id: module.id, name: module.name },
+        };
+      });
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException(
+          'Data changed while adding the student; try again',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Serializes activations, enrollments and grace changes of the active module. */
+  private async lockModuleChanges(manager: EntityManager) {
+    await manager.query('SELECT pg_advisory_xact_lock($1)', [
+      MODULE_ACTIVATION_LOCK_KEY,
+    ]);
+  }
+
+  private isUniqueViolation(error: unknown) {
+    return (
+      error instanceof QueryFailedError &&
+      (error as QueryFailedError & { driverError?: { code?: string } })
+        .driverError?.code === '23505'
+    );
   }
 
   private async analyze(files: ImportFiles): Promise<ImportAnalysis> {

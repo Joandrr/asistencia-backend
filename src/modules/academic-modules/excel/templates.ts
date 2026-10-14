@@ -71,7 +71,7 @@ export async function buildTemplate(kind: TemplateKind): Promise<Buffer> {
           'Completa la hoja "Fechas" desde la fila 2, una fecha de clase por fila.',
           'Fecha: formato dd/mm/aaaa. No se puede repetir.',
           'Hora inicio y Hora fin: formato HH:mm (24 horas). La hora de fin debe ser posterior a la de inicio.',
-          'La asistencia se podrá marcar durante todo el día de cada fecha; los horarios son informativos.',
+          'La asistencia se marca durante el horario de cada clase: dentro del tiempo de gracia del módulo cuenta como Presente y después como Atraso.',
           `Máximo ${IMPORT_LIMITS.maxScheduleRows} fechas por archivo.`,
         ];
   lines.forEach((line) => help.addRow([line]));
