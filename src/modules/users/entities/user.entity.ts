@@ -10,7 +10,9 @@ export enum UserRole {
 
 @Entity({ name: 'users' })
 @Unique('UQ_users_registration_no', ['registrationNo'])
+@Unique('UQ_users_email', ['email'])
 @Check('CHK_users_role', `"role" IN ('student', 'admin')`)
+@Check('CHK_users_email_lowercase', '"email" = LOWER("email")')
 export class User extends BaseEntity {
   @Column({ name: 'role', type: 'varchar', length: 20 })
   role!: UserRole;
@@ -23,6 +25,9 @@ export class User extends BaseEntity {
 
   @Column({ name: 'full_name', type: 'varchar', length: 200, nullable: true })
   fullName!: string | null;
+
+  @Column({ name: 'email', type: 'varchar', length: 254, nullable: true })
+  email!: string | null;
 
   @Column({
     name: 'degree_program',
