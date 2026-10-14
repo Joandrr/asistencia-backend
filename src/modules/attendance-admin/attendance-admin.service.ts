@@ -13,18 +13,16 @@ import { buildAttendanceWorkbook } from './attendance-export';
 import { AttendanceByDateDto } from './dto/attendance-by-date.dto';
 import { ListModuleStudentsDto } from './dto/list-module-students.dto';
 
-export interface StatusTotals {
-  present: number;
-  absent: number;
-  pending: number;
-  /** Present / (present + absent), rounded; null when nothing was evaluated. */
-  rate: number | null;
-}
-
 export interface CountRow {
   present: number;
+  late: number;
   absent: number;
   pending: number;
+}
+
+export interface StatusTotals extends CountRow {
+  /** (present + late) / (present + late + absent); null when nothing was evaluated. */
+  rate: number | null;
 }
 
 export interface ScheduleRow extends CountRow {
@@ -51,6 +49,7 @@ const SEARCH_FILTER = (param: string) => `(${param}::text IS NULL
   OR u."full_name" ILIKE ${param} ESCAPE '\\')`;
 const STATUS_COUNTS = `
   COUNT(c.st) FILTER (WHERE c.st = 'present')::int AS "present",
+  COUNT(c.st) FILTER (WHERE c.st = 'late')::int AS "late",
   COUNT(c.st) FILTER (WHERE c.st = 'absent')::int AS "absent",
   COUNT(c.st) FILTER (WHERE c.st = 'pending')::int AS "pending"`;
 const STUDENT_ORDER = `u."full_name" ASC NULLS LAST, u."registration_no" ASC`;
@@ -96,7 +95,7 @@ export class AttendanceAdminService {
       module: this.moduleInfo(module),
       data: rows.map((row) => ({
         ...row,
-        rate: attendanceRate(row.present, row.absent),
+        rate: this.rate(row),
       })),
       meta: this.pageMeta(query, total),
     };
@@ -120,7 +119,7 @@ export class AttendanceAdminService {
       },
       schedules: schedules.map((schedule) => ({
         ...schedule,
-        rate: attendanceRate(schedule.present, schedule.absent),
+        rate: this.rate(schedule),
       })),
     };
   }
@@ -240,7 +239,7 @@ export class AttendanceAdminService {
       [module.id, now.date, now.time, student.enrollmentId],
     );
 
-    const counts = { present: 0, absent: 0, pending: 0 };
+    const counts: CountRow = { present: 0, late: 0, absent: 0, pending: 0 };
     for (const record of records) counts[record.status] += 1;
 
     return {
@@ -253,7 +252,7 @@ export class AttendanceAdminService {
       },
       totals: {
         ...counts,
-        rate: attendanceRate(counts.present, counts.absent),
+        rate: this.rate(counts),
       },
       records,
     };
@@ -303,10 +302,11 @@ export class AttendanceAdminService {
 
     return buildAttendanceWorkbook({
       moduleName: module.name,
+      graceMinutes: module.graceMinutes,
       generatedOn: now,
       students: students.map((row) => ({
         ...row,
-        rate: attendanceRate(row.present, row.absent),
+        rate: this.rate(row),
       })),
       schedules,
       cells,
@@ -360,12 +360,17 @@ export class AttendanceAdminService {
     const sum = rows.reduce(
       (acc, row) => ({
         present: acc.present + row.present,
+        late: acc.late + row.late,
         absent: acc.absent + row.absent,
         pending: acc.pending + row.pending,
       }),
-      { present: 0, absent: 0, pending: 0 },
+      { present: 0, late: 0, absent: 0, pending: 0 },
     );
-    return { ...sum, rate: attendanceRate(sum.present, sum.absent) };
+    return { ...sum, rate: this.rate(sum) };
+  }
+
+  private rate(counts: CountRow) {
+    return attendanceRate(counts.present, counts.late, counts.absent);
   }
 
   /** ILIKE pattern with %, _ and \ escaped so user input matches literally. */

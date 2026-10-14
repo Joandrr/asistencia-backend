@@ -31,7 +31,7 @@ export const XLSX_UPLOAD_OPTIONS: MulterOptions = {
   limits: {
     fileSize: IMPORT_LIMITS.maxUploadBytes,
     files: 2,
-    fields: 4,
+    fields: 5,
     fieldSize: 1024,
     parts: 6,
   },

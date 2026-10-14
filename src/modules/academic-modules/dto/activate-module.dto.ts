@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsIn, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { DEFAULT_GRACE_MINUTES } from '../../../common/grace-period';
+import { GraceMinutes } from './grace-minutes';
 
 export class ActivateModuleDto {
   @ApiProperty({ example: 'Módulo 3 - Desarrollo Backend', maxLength: 150 })
@@ -19,4 +21,7 @@ export class ActivateModuleDto {
   })
   @IsIn(['true'])
   confirm!: 'true';
+
+  @GraceMinutes()
+  graceMinutes: number = DEFAULT_GRACE_MINUTES;
 }

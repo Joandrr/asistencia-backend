@@ -12,6 +12,7 @@ export interface ExportStudent {
   fullName: string | null;
   email: string | null;
   present: number;
+  late: number;
   absent: number;
   pending: number;
   rate: number | null;
@@ -23,11 +24,13 @@ export interface ExportSchedule {
   startTime: string;
   endTime: string;
   present: number;
+  late: number;
   absent: number;
 }
 
 export interface ExportInput {
   moduleName: string;
+  graceMinutes: number;
   generatedOn: LocalNow;
   students: ExportStudent[];
   schedules: ExportSchedule[];
@@ -40,12 +43,14 @@ export interface ExportInput {
 
 export const STATUS_LABEL: Record<EffectiveStatus, string> = {
   present: 'Presente',
+  late: 'Atraso',
   absent: 'Falta',
   pending: 'Pendiente',
 };
 
 const STATUS_FILL: Record<EffectiveStatus, string> = {
   present: 'FFDCFCE7',
+  late: 'FFFEF3C7',
   absent: 'FFFEE2E2',
   pending: 'FFF1F5F9',
 };
@@ -76,6 +81,7 @@ function addSummarySheet(workbook: ExcelJS.Workbook, input: ExportInput) {
     { header: 'Nombre completo', key: 'fullName', width: 34 },
     { header: 'Correo electrónico', key: 'email', width: 32 },
     { header: 'Presentes', key: 'present', width: 12 },
+    { header: 'Atrasos', key: 'late', width: 12 },
     { header: 'Faltas', key: 'absent', width: 12 },
     { header: 'Pendientes', key: 'pending', width: 12 },
     { header: '% asistencia', key: 'rate', width: 14, style: { numFmt: '0%' } },
@@ -87,13 +93,14 @@ function addSummarySheet(workbook: ExcelJS.Workbook, input: ExportInput) {
       fullName: student.fullName ?? '',
       email: student.email ?? '',
       present: student.present,
+      late: student.late,
       absent: student.absent,
       pending: student.pending,
       // Stored as a fraction so Excel shows and sorts it as a real percentage.
       rate: student.rate === null ? null : student.rate / 100,
     });
   }
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 8 } };
 }
 
 function addDetailSheet(workbook: ExcelJS.Workbook, input: ExportInput) {
@@ -142,6 +149,7 @@ function addDetailSheet(workbook: ExcelJS.Workbook, input: ExportInput) {
     sheet.addRow([]);
     for (const [label, key] of [
       ['Total presentes', 'present'],
+      ['Total atrasos', 'late'],
       ['Total faltas', 'absent'],
     ] as const) {
       const row = sheet.addRow([
@@ -167,9 +175,14 @@ function addInfoSheet(workbook: ExcelJS.Workbook, input: ExportInput) {
     ['Estudiantes', String(input.students.length)],
     ['Fechas de clase', String(input.schedules.length)],
     [
-      'Presente',
-      'Asistencia registrada (incluye marcas con atraso o justificadas).',
+      'Tiempo de gracia',
+      `${input.graceMinutes} minutos desde la hora de inicio de cada clase.`,
     ],
+    [
+      'Presente',
+      'Marca dentro del tiempo de gracia (incluye asistencias justificadas).',
+    ],
+    ['Atraso', 'Marca después del tiempo de gracia. Cuenta como asistencia.'],
     [
       'Falta',
       'Sin marca cuando la clase ya terminó, o falta registrada por el administrador.',
@@ -177,7 +190,7 @@ function addInfoSheet(workbook: ExcelJS.Workbook, input: ExportInput) {
     ['Pendiente', 'Clase que aún no termina y todavía no tiene marca.'],
     [
       '% asistencia',
-      'Presentes / (Presentes + Faltas). Las clases pendientes no se cuentan.',
+      '(Presentes + Atrasos) / (Presentes + Atrasos + Faltas). Las clases pendientes no se cuentan.',
     ],
   ];
   rows.forEach(([label, value]) => {

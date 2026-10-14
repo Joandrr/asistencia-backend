@@ -10,12 +10,13 @@ import { ParseNumericIdPipe } from './numeric-id';
 const NOW = { date: '2026-10-14', time: '18:30:00' };
 
 describe('effective attendance status', () => {
-  it('treats present, late and excused marks as present', () => {
-    for (const stored of ['present', 'late', 'excused']) {
+  it('maps stored marks: excused counts as present, late stays late', () => {
+    for (const stored of ['present', 'excused']) {
       expect(effectiveStatus(stored, '2026-10-01', '21:00:00', NOW)).toBe(
         'present',
       );
     }
+    expect(effectiveStatus('late', '2026-10-01', '21:00:00', NOW)).toBe('late');
     expect(effectiveStatus('absent', '2026-10-20', '21:00:00', NOW)).toBe(
       'absent',
     );
@@ -37,11 +38,14 @@ describe('effective attendance status', () => {
   });
 
   it('computes the attendance rate over evaluated classes only', () => {
-    expect(attendanceRate(0, 0)).toBeNull();
-    expect(attendanceRate(3, 0)).toBe(100);
-    expect(attendanceRate(0, 4)).toBe(0);
-    expect(attendanceRate(2, 1)).toBe(67);
-    expect(attendanceRate(1, 2)).toBe(33);
+    expect(attendanceRate(0, 0, 0)).toBeNull();
+    expect(attendanceRate(3, 0, 0)).toBe(100);
+    expect(attendanceRate(0, 0, 4)).toBe(0);
+    expect(attendanceRate(2, 0, 1)).toBe(67);
+    expect(attendanceRate(1, 0, 2)).toBe(33);
+    // Late marks count as attended.
+    expect(attendanceRate(0, 3, 0)).toBe(100);
+    expect(attendanceRate(1, 1, 2)).toBe(50);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseEnumPipe,
+  Patch,
   Post,
   StreamableFile,
   UploadedFiles,
@@ -20,6 +21,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -34,6 +36,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { UserRole } from '../users/entities/user.entity';
 import { AcademicModulesService } from './academic-modules.service';
 import { ActivateModuleDto } from './dto/activate-module.dto';
+import { UpdateGracePeriodDto } from './dto/update-grace-period.dto';
 import { buildTemplate, TEMPLATE_FILENAMES } from './excel/templates';
 import type { TemplateKind } from './excel/templates';
 import {
@@ -76,6 +79,27 @@ export class AcademicModulesController {
   @ApiOkResponse({ description: 'Active module, or activeModule: null' })
   getActive() {
     return this.academicModulesService.getActiveModuleSummary();
+  }
+
+  @Patch('active/grace-period')
+  @ApiOperation({
+    summary: 'Change the active module grace period in minutes (admin only)',
+    description:
+      'Recalculates the tolerance of classes from today on; past classes keep theirs.',
+  })
+  @ApiOkResponse({
+    description: '{ graceMinutes, updatedSchedules, unchanged }',
+  })
+  @ApiBadRequestResponse({ description: 'graceMinutes must be 0-240' })
+  @ApiNotFoundResponse({ description: 'No active module' })
+  updateGracePeriod(
+    @Body() dto: UpdateGracePeriodDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.academicModulesService.updateGracePeriod(
+      dto.graceMinutes,
+      actor,
+    );
   }
 
   @Get('templates/:kind')
@@ -137,6 +161,12 @@ export class AcademicModulesController {
       properties: {
         name: { type: 'string', maxLength: 150 },
         confirm: { type: 'string', enum: ['true'] },
+        graceMinutes: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 240,
+          default: 10,
+        },
         ...FILE_PROPERTIES,
       },
     },
@@ -157,6 +187,7 @@ export class AcademicModulesController {
   ) {
     return this.academicModulesService.activate(
       dto.name,
+      dto.graceMinutes,
       requireImportFiles(files),
       actor,
     );

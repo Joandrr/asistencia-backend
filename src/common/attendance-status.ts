@@ -1,14 +1,11 @@
 import { AttendanceStatus } from '../database/entities/attendance.entity';
 import { LocalNow } from './clock';
 
-/** Attendance as shown to administrators: the requirements only use Present/Absent. */
-export type EffectiveStatus = 'present' | 'absent' | 'pending';
-
-const ATTENDED: ReadonlySet<string> = new Set([
-  AttendanceStatus.PRESENT,
-  AttendanceStatus.LATE,
-  AttendanceStatus.EXCUSED,
-]);
+/**
+ * Attendance as shown to administrators. A late mark (after the module's
+ * grace period) is its own state but still counts as attended.
+ */
+export type EffectiveStatus = 'present' | 'late' | 'absent' | 'pending';
 
 /**
  * A class without a mark counts as absent once it is over: any earlier date,
@@ -28,8 +25,17 @@ export function effectiveStatus(
   endTime: string,
   now: LocalNow,
 ): EffectiveStatus {
-  if (storedStatus) return ATTENDED.has(storedStatus) ? 'present' : 'absent';
-  return isClassOver(classDate, endTime, now) ? 'absent' : 'pending';
+  switch (storedStatus) {
+    case AttendanceStatus.PRESENT:
+    case AttendanceStatus.EXCUSED:
+      return 'present';
+    case AttendanceStatus.LATE:
+      return 'late';
+    case AttendanceStatus.ABSENT:
+      return 'absent';
+    default:
+      return isClassOver(classDate, endTime, now) ? 'absent' : 'pending';
+  }
 }
 
 /**
@@ -45,7 +51,8 @@ export function effectiveStatusSql(
   const a = attendanceAlias;
   const s = scheduleAlias;
   return `CASE
-    WHEN ${a}."status" IN ('present', 'late', 'excused') THEN 'present'
+    WHEN ${a}."status" IN ('present', 'excused') THEN 'present'
+    WHEN ${a}."status" = 'late' THEN 'late'
     WHEN ${a}."status" = 'absent' THEN 'absent'
     WHEN ${s}."class_date" < ${today}::date
       OR (${s}."class_date" = ${today}::date AND ${s}."end_time" < ${now}::time)
@@ -54,8 +61,16 @@ export function effectiveStatusSql(
   END`;
 }
 
-/** Attendance percentage over evaluated classes; null when none was evaluated yet. */
-export function attendanceRate(present: number, absent: number): number | null {
-  const evaluated = present + absent;
-  return evaluated === 0 ? null : Math.round((present / evaluated) * 100);
+/**
+ * Attendance percentage over evaluated classes (late counts as attended);
+ * null when none was evaluated yet.
+ */
+export function attendanceRate(
+  present: number,
+  late: number,
+  absent: number,
+): number | null {
+  const attended = present + late;
+  const evaluated = attended + absent;
+  return evaluated === 0 ? null : Math.round((attended / evaluated) * 100);
 }

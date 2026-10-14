@@ -1,7 +1,17 @@
-import { Controller, Get, Param, Query, StreamableFile } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -11,6 +21,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { ParseNumericIdPipe } from '../../common/numeric-id';
+import { AcademicModulesService } from '../academic-modules/academic-modules.service';
+import { AddModuleStudentDto } from '../academic-modules/dto/add-module-student.dto';
+import type { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
 import { AttendanceAdminService } from './attendance-admin.service';
@@ -28,7 +42,10 @@ const XLSX_CONTENT_TYPE =
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class AttendanceAdminController {
-  constructor(private readonly attendanceAdmin: AttendanceAdminService) {}
+  constructor(
+    private readonly attendanceAdmin: AttendanceAdminService,
+    private readonly academicModules: AcademicModulesService,
+  ) {}
 
   @Get('students')
   @ApiOperation({
@@ -37,6 +54,22 @@ export class AttendanceAdminController {
   @ApiOkResponse({ description: 'Paginated students: { module, data, meta }' })
   listStudents(@Query() query: ListModuleStudentsDto) {
     return this.attendanceAdmin.listStudents(query);
+  }
+
+  @Post('students')
+  @ApiOperation({
+    summary: 'Add a student to the active module (missing from the Excel)',
+  })
+  @ApiCreatedResponse({ description: '{ status, student, module }' })
+  @ApiConflictResponse({
+    description:
+      'Registration belongs to an admin, email in use or already enrolled',
+  })
+  addStudent(
+    @Body() dto: AddModuleStudentDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.academicModules.addStudentToActiveModule(dto, actor);
   }
 
   @Get('attendance/summary')

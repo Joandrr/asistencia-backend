@@ -9,9 +9,10 @@ import {
 import { AttendanceStatus } from '../../../database/entities/attendance.entity';
 import { NUMERIC_ID_PATTERN } from '../../../common/numeric-id';
 
-/** The requirements only manage Present/Absent (no lateness in this version). */
+/** States an administrator can set (late = marked after the grace period). */
 export const CORRECTABLE_STATUSES = [
   AttendanceStatus.PRESENT,
+  AttendanceStatus.LATE,
   AttendanceStatus.ABSENT,
 ] as const;
 export type CorrectableStatus = (typeof CORRECTABLE_STATUSES)[number];
