@@ -24,7 +24,12 @@ export class User extends BaseEntity {
   @Column({ name: 'full_name', type: 'varchar', length: 200, nullable: true })
   fullName!: string | null;
 
-  @Column({ name: 'degree_program', type: 'varchar', length: 150, nullable: true })
+  @Column({
+    name: 'degree_program',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+  })
   degreeProgram!: string | null;
 
   @OneToMany(() => Enrollment, (enrollment) => enrollment.student)

@@ -1,4 +1,11 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany, Unique } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  Unique,
+} from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { User } from './user.entity';
 import { Module } from './module.entity';
@@ -17,11 +24,17 @@ export class Enrollment extends BaseEntity {
   @Column({ name: 'module_id', type: 'bigint' })
   moduleId!: string;
 
-  @ManyToOne(() => Module, (module) => module.enrollments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Module, (module) => module.enrollments, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'module_id' })
   module!: Module;
 
-  @Column({ name: 'assigned_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'assigned_at',
+    type: 'timestamptz',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   assignedAt!: Date;
 
   @OneToMany(() => Attendance, (attendance) => attendance.enrollment)

@@ -28,10 +28,20 @@ export class AuditLog extends BaseEntity {
   @Column({ name: 'action', type: 'varchar', length: 100 })
   action!: string;
 
-  @Column({ name: 'affected_entity', type: 'varchar', length: 100, nullable: true })
+  @Column({
+    name: 'affected_entity',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
   affectedEntity!: string | null;
 
-  @Column({ name: 'affected_record_id', type: 'varchar', length: 100, nullable: true })
+  @Column({
+    name: 'affected_record_id',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
   affectedRecordId!: string | null;
 
   @Column({ name: 'previous_value', type: 'jsonb', nullable: true })

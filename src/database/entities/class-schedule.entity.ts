@@ -1,4 +1,11 @@
-import { Check, Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import {
+  Check,
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+} from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Module } from './module.entity';
 import { Attendance } from './attendance.entity';
@@ -13,7 +20,9 @@ export class ClassSchedule extends BaseEntity {
   @Column({ name: 'module_id', type: 'bigint' })
   moduleId!: string;
 
-  @ManyToOne(() => Module, (module) => module.schedules, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Module, (module) => module.schedules, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'module_id' })
   module!: Module;
 
