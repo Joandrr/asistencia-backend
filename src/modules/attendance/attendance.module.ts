@@ -6,11 +6,13 @@ import { Enrollment } from '../../database/entities/enrollment.entity';
 import { Module as SubjectModule } from '../../database/entities/module.entity';
 import { User } from '../users/entities/user.entity';
 import { AuditLog } from '../../database/entities/audit-log.entity';
+import { AcademicModulesModule } from '../academic-modules/academic-modules.module';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 
 @Module({
   imports: [
+    AcademicModulesModule,
     TypeOrmModule.forFeature([
       Attendance,
       ClassSchedule,

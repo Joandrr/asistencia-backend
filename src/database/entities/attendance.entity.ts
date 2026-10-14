@@ -1,4 +1,12 @@
-import { Check, Column, Entity, JoinColumn, ManyToOne, Unique } from 'typeorm';
+import {
+  Check,
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  Unique,
+} from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Enrollment } from './enrollment.entity';
 import { ClassSchedule } from './class-schedule.entity';
@@ -11,6 +19,7 @@ export enum AttendanceStatus {
 }
 
 @Entity({ name: 'attendance' })
+@Index('IDX_attendance_schedule', ['scheduleId'])
 @Unique('UQ_attendance_enrollment_schedule', ['enrollmentId', 'scheduleId'])
 @Check(
   'CHK_attendance_status',

@@ -7,6 +7,7 @@ import { AcademicModulesModule } from './modules/academic-modules/academic-modul
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { AttendanceAdminModule } from './modules/attendance-admin/attendance-admin.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     UsersModule,
     AcademicModulesModule,
     AttendanceModule,
+    AttendanceAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

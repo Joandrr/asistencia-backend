@@ -60,6 +60,7 @@ export class AttendanceController {
   }
 
   @Post('admin/correct')
+  @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: 'Permite al administrador corregir o registrar una asistencia fuera de fecha (RF-04 / RN-06)',

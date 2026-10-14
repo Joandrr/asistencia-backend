@@ -1,31 +1,49 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { AttendanceStatus } from '../../../database/entities/attendance.entity';
+import { NUMERIC_ID_PATTERN } from '../../../common/numeric-id';
+
+/** The requirements only manage Present/Absent (no lateness in this version). */
+export const CORRECTABLE_STATUSES = [
+  AttendanceStatus.PRESENT,
+  AttendanceStatus.ABSENT,
+] as const;
+export type CorrectableStatus = (typeof CORRECTABLE_STATUSES)[number];
 
 export class AdminCorrectAttendanceDto {
   @ApiProperty({ description: 'ID del estudiante', example: '4' })
-  @IsString()
-  @IsNotEmpty()
+  @Matches(NUMERIC_ID_PATTERN, {
+    message: 'studentId must be a positive integer',
+  })
   studentId!: string;
 
   @ApiProperty({ description: 'ID de la clase programada', example: '1' })
-  @IsString()
-  @IsNotEmpty()
+  @Matches(NUMERIC_ID_PATTERN, {
+    message: 'scheduleId must be a positive integer',
+  })
   scheduleId!: string;
 
   @ApiProperty({
     description: 'Estado de la asistencia',
-    enum: AttendanceStatus,
+    enum: CORRECTABLE_STATUSES,
     example: AttendanceStatus.PRESENT,
   })
-  @IsEnum(AttendanceStatus)
-  status!: AttendanceStatus;
+  @IsIn(CORRECTABLE_STATUSES)
+  status!: CorrectableStatus;
 
   @ApiPropertyOptional({
-    description: 'Motivo o justificación de la corrección fuera de fecha',
+    description: 'Motivo de la corrección',
     example: 'Justificación médica presentada en secretaría',
+    maxLength: 500,
   })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   notes?: string;
 }
