@@ -19,6 +19,8 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
     "seed:admin": "node -r ts-node/register src/database/seed-admin.ts",
+    "seed:student": "node -r ts-node/register src/database/seed-student.ts",
+    "seed:demo": "node -r ts-node/register src/database/seed-attendance-demo.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

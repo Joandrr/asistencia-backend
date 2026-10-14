@@ -35,7 +35,8 @@ export interface ParsedStudent {
   email: string;
 }
 
-const REGISTRATION_PATTERN = /^\d{7,12}$/;
+// Same rule as login and user creation (6 to 12 digits).
+const REGISTRATION_PATTERN = /^\d{6,12}$/;
 const FULL_NAME_MAX = 200;
 const EMAIL_MAX = 254;
 const LABEL = Object.fromEntries(
@@ -122,7 +123,7 @@ function parseRegistrationNo(raw: unknown): Parsed {
   if (text === null || !REGISTRATION_PATTERN.test(text)) {
     return {
       error:
-        'El número de registro debe tener entre 7 y 12 dígitos, sin letras, espacios ni decimales.',
+        'El número de registro debe tener entre 6 y 12 dígitos, sin letras, espacios ni decimales.',
     };
   }
   return { value: text };

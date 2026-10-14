@@ -118,6 +118,20 @@ describe('student import', () => {
     expect(issues[5].message).toContain('fila 5');
   });
 
+  it('accepts registration numbers of 6 to 12 digits, like login', async () => {
+    const { students, issues } = await readStudents([
+      STUDENT_HEADER,
+      ['123456', 'Seis Dígitos', 'seis@gmail.com'],
+      ['12345', 'Cinco Dígitos', 'cinco@gmail.com'],
+      ['123456789012', 'Doce Dígitos', 'doce@gmail.com'],
+    ]);
+    expect(students.map((s) => s.registrationNo)).toEqual([
+      '123456',
+      '123456789012',
+    ]);
+    expect(issues.map((i) => i.row)).toEqual([3]);
+  });
+
   it('rejects files with missing or repeated headers', async () => {
     const missing = await readStudents([
       ['Registro', 'Nombre'],

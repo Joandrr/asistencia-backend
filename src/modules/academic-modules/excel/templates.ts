@@ -55,7 +55,7 @@ export async function buildTemplate(kind: TemplateKind): Promise<Buffer> {
     kind === 'students'
       ? [
           'Completa la hoja "Estudiantes" desde la fila 2, un estudiante por fila.',
-          'Número de registro: entre 7 y 12 dígitos, sin espacios ni guiones. No se puede repetir.',
+          'Número de registro: entre 6 y 12 dígitos, sin espacios ni guiones. No se puede repetir.',
           'Nombre completo: obligatorio.',
           'Correo electrónico: obligatorio, con formato válido. No se puede repetir.',
           `Máximo ${IMPORT_LIMITS.maxStudentRows} estudiantes por archivo.`,
