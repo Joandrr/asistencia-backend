@@ -1,10 +1,15 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { compare } from 'bcryptjs';
+import { compare, hash } from 'bcryptjs';
 import { Repository } from 'typeorm';
-import { User } from '../../database/entities/user.entity';
+import { User } from '../users/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -39,5 +44,30 @@ export class AuthService {
         fullName: user.fullName,
       },
     };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    if (Buffer.byteLength(dto.newPassword, 'utf8') > 72) {
+      throw new BadRequestException(
+        'New password must not exceed 72 UTF-8 bytes',
+      );
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists or is inactive');
+    }
+    if (!(await compare(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    user.passwordHash = await hash(dto.newPassword, 12);
+    await this.users.save(user);
+    return { message: 'Password changed successfully' };
   }
 }

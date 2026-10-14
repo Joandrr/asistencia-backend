@@ -1,7 +1,7 @@
 import { Check, Column, Entity, OneToMany, Unique } from 'typeorm';
-import { BaseEntity } from './base.entity';
-import { Enrollment } from './enrollment.entity';
-import { AuditLog } from './audit-log.entity';
+import { BaseEntity } from '../../../database/entities/base.entity';
+import { Enrollment } from '../../../database/entities/enrollment.entity';
+import { AuditLog } from '../../../database/entities/audit-log.entity';
 
 export enum UserRole {
   STUDENT = 'student',
@@ -15,7 +15,7 @@ export class User extends BaseEntity {
   @Column({ name: 'role', type: 'varchar', length: 20 })
   role!: UserRole;
 
-  @Column({ name: 'registration_no', type: 'varchar', length: 50 })
+  @Column({ name: 'registration_no', type: 'varchar', length: 12 })
   registrationNo!: string;
 
   @Column({ name: 'password_hash', type: 'text' })

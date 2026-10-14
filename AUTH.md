@@ -5,7 +5,7 @@ the token, loads the current user from PostgreSQL, and puts only the current
 user's `id` and `role` on `request.user`. The global `RolesGuard` enforces
 `@Roles(...)` metadata on controllers or route handlers.
 
-Interactive API documentation is available at `http://localhost:3000/api/docs`
+Interactive API documentation is available at `http://localhost:3000/api/v1/docs`
 when the app is running. After calling login in Swagger, click **Authorize**
 and enter the returned access token to try protected endpoints.
 
@@ -21,7 +21,7 @@ For example, generate one locally with `openssl rand -base64 32`.
 
 ## Login
 
-`POST /auth/login` is public and expects:
+`POST /api/v1/auth/login` is public and expects:
 
 ```json
 {
@@ -38,8 +38,9 @@ Authorization: Bearer <access_token>
 ```
 
 There is no public registration or password-reset endpoint. To create the
-initial administrator, set `ADMIN_REGISTRATION_NO`, `ADMIN_PASSWORD` (7–12
-characters), and optionally `ADMIN_FULL_NAME` in `.env`, then run:
+initial administrator, set `ADMIN_REGISTRATION_NO` (7–12 digits),
+`ADMIN_PASSWORD` (at least 8 characters), and optionally `ADMIN_FULL_NAME` in
+`.env`, then run:
 
 ```bash
 npm run migration:run
@@ -68,3 +69,40 @@ authenticated user's ID (available through `@CurrentUser()`).
 
 Unauthenticated requests receive `401`; authenticated users with a disallowed
 role receive `403`.
+
+## User creation and first login
+
+Only an administrator can create users through `POST /users`. The `registrationNo`
+must contain 7–12 digits and be unique; passwords must contain at least 8
+characters. The role must be one of the application roles. Students must have a
+`degreeProgram`; administrators must not. `fullName` is required for either
+role. The initial password is bcrypt-hashed and never returned or written to the
+user-creation audit event. User creation and its audit record are committed in
+the same database transaction.
+
+Authenticated users can change their own password with
+`POST /api/v1/auth/change-password`.
+Send the current password, a different new password of at least 8 characters, and
+a valid bearer token. The password is re-hashed with bcrypt; no database schema
+migration is required.
+
+## CORS
+
+Set `CORS_ORIGIN` in `.env` to the exact frontend origin, including protocol
+and port (for example, `http://localhost:5173`). Multiple origins may be
+comma-separated. Requests from other browser origins are not allowed. CORS
+allows the `Authorization` header used by bearer-token authentication.
+
+## User administration
+
+All user-administration routes require an administrator bearer token:
+
+- `POST /api/v1/users` creates a user.
+- `GET /api/v1/users` returns a paginated list; it includes soft-deleted users by default. Optional query parameters: `page`, `limit` (maximum 100), `role`, and `q` (registration number/name search).
+- `GET /api/v1/users/:id` returns the user even when soft-deleted; `deletedAt` indicates that status.
+- `PATCH /api/v1/users/:id` updates an active user.
+- `DELETE /api/v1/users/:id` soft-deletes an active user.
+- `POST /api/v1/users/:id/restore` restores a soft-deleted user.
+
+The users table has no separate `isActive` field; soft-deletion is represented by
+`deletedAt`. Password hashes are never included in responses or audit values.

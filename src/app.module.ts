@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { AuthModule } from './modules/auth/auth.module';
       useFactory: (configService: ConfigService) => ({
         type: 'postgres' as const,
         url: configService.getOrThrow<string>('DATABASE_URL'),
-        entities: [__dirname + '/database/entities/*.entity{.ts,.js}'],
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
         migrationsTableName: 'migrations',
         synchronize: false,
@@ -21,6 +22,7 @@ import { AuthModule } from './modules/auth/auth.module';
       }),
     }),
     AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { AuthenticatedUser } from '../authenticated-user.interface';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { UserRole } from '../../../database/entities/user.entity';
+import { UserRole } from '../../users/entities/user.entity';
 
 type AuthenticatedRequest = Request & { user?: AuthenticatedUser };
 

@@ -1,18 +1,26 @@
 import 'dotenv/config';
 import { hash } from 'bcryptjs';
 import dataSource from './data-source';
-import { User, UserRole } from './entities/user.entity';
+import { User, UserRole } from '../modules/users/entities/user.entity';
 
 async function seedAdmin(): Promise<void> {
   const registrationNo = process.env.ADMIN_REGISTRATION_NO?.trim();
   const password = process.env.ADMIN_PASSWORD;
   const fullName = process.env.ADMIN_FULL_NAME?.trim() || null;
 
-  if (!registrationNo) {
-    throw new Error('ADMIN_REGISTRATION_NO must be set in .env');
+  if (!registrationNo || !/^\d{7,12}$/.test(registrationNo)) {
+    throw new Error(
+      'ADMIN_REGISTRATION_NO must contain between 7 and 12 digits',
+    );
   }
-  if (!password || password.length < 7 || password.length > 12) {
-    throw new Error('ADMIN_PASSWORD must contain between 7 and 12 characters');
+  if (
+    !password ||
+    password.length < 8 ||
+    Buffer.byteLength(password, 'utf8') > 72
+  ) {
+    throw new Error(
+      'ADMIN_PASSWORD must contain at least 8 characters and at most 72 UTF-8 bytes',
+    );
   }
 
   await dataSource.initialize();

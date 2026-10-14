@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '../../../database/entities/user.entity';
+import { UserRole } from '../../users/entities/user.entity';
 
 class LoginUserDto {
   @ApiProperty({ example: '1' })
@@ -8,7 +8,7 @@ class LoginUserDto {
   @ApiProperty({ enum: UserRole, example: UserRole.ADMIN })
   role!: UserRole;
 
-  @ApiProperty({ example: 'admin1' })
+  @ApiProperty({ example: '1234567' })
   registrationNo!: string;
 
   @ApiProperty({ example: 'System Administrator', nullable: true })

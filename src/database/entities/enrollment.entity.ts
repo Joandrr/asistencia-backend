@@ -7,7 +7,7 @@ import {
   Unique,
 } from 'typeorm';
 import { BaseEntity } from './base.entity';
-import { User } from './user.entity';
+import { User } from '../../modules/users/entities/user.entity';
 import { Module } from './module.entity';
 import { Attendance } from './attendance.entity';
 

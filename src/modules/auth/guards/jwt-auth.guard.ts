@@ -11,7 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { AuthenticatedUser } from '../authenticated-user.interface';
-import { User } from '../../../database/entities/user.entity';
+import { User } from '../../users/entities/user.entity';
 
 type JwtPayload = { sub: string };
 type AuthenticatedRequest = Request & { user?: AuthenticatedUser };

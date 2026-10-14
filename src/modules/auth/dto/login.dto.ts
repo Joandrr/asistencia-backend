@@ -1,17 +1,19 @@
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsNotEmpty, IsString, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  @ApiProperty({ example: 'admin1', maxLength: 50 })
+  @ApiProperty({
+    example: '1234567',
+    minLength: 7,
+    maxLength: 12,
+    pattern: '^\\d{7,12}$',
+  })
   @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
+  @Matches(/^\d{7,12}$/)
   registrationNo!: string;
 
-  @ApiProperty({ example: 'your-password', minLength: 7, maxLength: 12 })
+  @ApiProperty({ example: 'your-password' })
   @IsString()
   @IsNotEmpty()
-  @MinLength(7)
-  @MaxLength(12)
   password!: string;
 }
