@@ -10,16 +10,27 @@ export const TEMPLATE_FILENAMES: Record<TemplateKind, string> = {
   schedules: 'plantilla-fechas.xlsx',
 };
 
+export const WORKBOOK_CREATOR = 'Sistema de Control de Asistencia';
+
 const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
   fgColor: { argb: 'FF1E3A8A' },
 };
 
+/** Bold white-on-blue header row, shared by templates and exports. */
+export function styleHeaderRow(row: ExcelJS.Row): void {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  row.eachCell((cell) => {
+    cell.fill = HEADER_FILL;
+    cell.numFmt = 'General';
+  });
+}
+
 /** Builds an empty template: header row plus a separate instructions sheet. */
 export async function buildTemplate(kind: TemplateKind): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Sistema de Control de Asistencia';
+  workbook.creator = WORKBOOK_CREATOR;
   const sheet = workbook.addWorksheet(
     kind === 'students' ? 'Estudiantes' : 'Fechas',
     { views: [{ state: 'frozen', ySplit: 1 }] },
@@ -42,12 +53,7 @@ export async function buildTemplate(kind: TemplateKind): Promise<Buffer> {
     }));
   }
 
-  const header = sheet.getRow(1);
-  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  header.eachCell((cell) => {
-    cell.fill = HEADER_FILL;
-    cell.numFmt = 'General';
-  });
+  styleHeaderRow(sheet.getRow(1));
 
   const help = workbook.addWorksheet('Instrucciones');
   help.getColumn(1).width = 100;

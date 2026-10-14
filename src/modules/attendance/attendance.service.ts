@@ -6,12 +6,21 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { Attendance, AttendanceStatus } from '../../database/entities/attendance.entity';
 import { ClassSchedule } from '../../database/entities/class-schedule.entity';
 import { Enrollment } from '../../database/entities/enrollment.entity';
 import { Module } from '../../database/entities/module.entity';
 import { AuditLog } from '../../database/entities/audit-log.entity';
+import {
+  effectiveStatus,
+  EffectiveStatus,
+} from '../../common/attendance-status';
+import { DEFAULT_TIMEZONE, nowInTimezone } from '../../common/clock';
+import { AcademicModulesService } from '../academic-modules/academic-modules.service';
+import { UserRole } from '../users/entities/user.entity';
+import { CorrectableStatus } from './dto/admin-correct-attendance.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -25,6 +34,8 @@ export class AttendanceService {
     @InjectRepository(Module)
     private readonly moduleRepo: Repository<Module>,
     private readonly dataSource: DataSource,
+    private readonly academicModules: AcademicModulesService,
+    private readonly configService: ConfigService,
   ) {}
 
   private getBoliviaDateTime(): { date: string; time: string; full: Date } {
@@ -351,83 +362,150 @@ export class AttendanceService {
     return { modules: results };
   }
 
+  /**
+   * RF-07: an administrator sets Present/Absent for a student on any class
+   * date of the active module up to today. Every effective change is audited
+   * with the previous and new values (RN-07); repeating the current status is
+   * a no-op.
+   */
   async adminCorrectAttendance(
     adminId: string,
     studentId: string,
     scheduleId: string,
-    status: AttendanceStatus,
+    status: CorrectableStatus,
     notes?: string,
   ) {
-    const schedule = await this.scheduleRepo.findOne({
-      where: { id: scheduleId },
-      relations: { module: true },
-    });
+    const activeModule = await this.academicModules.getActiveModule();
+    if (!activeModule) {
+      throw new NotFoundException('No hay un módulo activo');
+    }
 
+    const schedule = await this.scheduleRepo.findOne({
+      where: { id: scheduleId, moduleId: activeModule.id },
+    });
     if (!schedule) {
-      throw new NotFoundException('La clase programada no fue encontrada');
+      throw new NotFoundException(
+        'La clase programada no pertenece al módulo activo',
+      );
+    }
+
+    const now = nowInTimezone(
+      this.configService.get<string>('APP_TIMEZONE') ?? DEFAULT_TIMEZONE,
+    );
+    if (schedule.classDate > now.date) {
+      throw new BadRequestException(
+        'No se puede modificar la asistencia de una fecha futura',
+      );
     }
 
     const enrollment = await this.enrollmentRepo.findOne({
-      where: {
-        studentId,
-        moduleId: schedule.moduleId,
-      },
+      where: { studentId, moduleId: activeModule.id },
+      relations: { student: true },
     });
-
-    if (!enrollment) {
+    if (
+      !enrollment?.student ||
+      enrollment.student.deletedAt ||
+      enrollment.student.role !== UserRole.STUDENT
+    ) {
       throw new NotFoundException(
-        'El estudiante no está inscrito en este módulo/materia',
+        'El estudiante no está inscrito en el módulo activo',
       );
     }
 
-    const existing = await this.attendanceRepo.findOne({
-      where: {
-        enrollmentId: enrollment.id,
-        scheduleId: schedule.id,
-      },
-    });
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const attRepo = manager.getRepository(Attendance);
+        const auditRepo = manager.getRepository(AuditLog);
 
-    const previousStatus = existing?.status ?? null;
-    const realTimestamp = new Date();
+        // Lock the row so concurrent corrections/marks cannot interleave.
+        const existing = await attRepo.findOne({
+          where: { enrollmentId: enrollment.id, scheduleId: schedule.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const previousStatus = effectiveStatus(
+          existing?.status ?? null,
+          schedule.classDate,
+          schedule.endTime,
+          now,
+        );
+        const requestedStatus: EffectiveStatus =
+          status === AttendanceStatus.PRESENT ? 'present' : 'absent';
+        if (previousStatus === requestedStatus) {
+          return {
+            message:
+              'La asistencia ya tenía ese estado; no se realizaron cambios',
+            unchanged: true,
+            attendance: existing ? this.correctionView(existing) : null,
+          };
+        }
 
-    return await this.dataSource.transaction(async (manager) => {
-      const attRepo = manager.getRepository(Attendance);
-      const auditRepo = manager.getRepository(AuditLog);
+        const previousValue = {
+          status: previousStatus,
+          storedStatus: existing?.status ?? null,
+          markedAt: existing?.markedAt ?? null,
+          notes: existing?.notes ?? null,
+        };
+        const reason = notes?.trim() || 'Modificado por el administrador';
 
-      let record: Attendance;
-      if (existing) {
-        existing.status = status;
-        existing.markedAt = existing.markedAt ?? realTimestamp;
-        existing.notes = notes ?? `Corregido administrativamente fuera de fecha por admin #${adminId}`;
-        record = await attRepo.save(existing);
-      } else {
-        record = await attRepo.save(
+        const record =
+          existing ??
           attRepo.create({
             enrollmentId: enrollment.id,
             scheduleId: schedule.id,
-            status,
-            markedAt: realTimestamp,
-            notes: notes ?? `Registrado administrativamente fuera de fecha por admin #${adminId}`,
+            markedAt: null,
+          });
+        record.status = status;
+        record.notes = reason;
+        // An absence has no mark time; a student's real mark time is kept for
+        // presences and preserved in the audit trail otherwise.
+        if (status === AttendanceStatus.ABSENT) record.markedAt = null;
+        const saved = await attRepo.save(record);
+
+        await auditRepo.save(
+          auditRepo.create({
+            userId: adminId,
+            moduleId: activeModule.id,
+            action: 'attendance.admin_corrected',
+            affectedEntity: 'attendance',
+            affectedRecordId: saved.id,
+            previousValue,
+            newValue: {
+              status,
+              notes: reason,
+              studentId: enrollment.studentId,
+              registrationNo: enrollment.student.registrationNo,
+              scheduleId: schedule.id,
+              classDate: schedule.classDate,
+            },
           }),
         );
+
+        return {
+          message: 'Asistencia actualizada correctamente',
+          unchanged: false,
+          attendance: this.correctionView(saved),
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error as QueryFailedError & { driverError?: { code?: string } })
+          .driverError?.code === '23505'
+      ) {
+        throw new ConflictException(
+          'La asistencia cambió mientras se guardaba; vuelve a intentarlo',
+        );
       }
+      throw error;
+    }
+  }
 
-      await auditRepo.save(
-        auditRepo.create({
-          userId: adminId,
-          moduleId: schedule.moduleId,
-          action: 'attendance.admin_corrected',
-          affectedEntity: 'attendance',
-          affectedRecordId: record.id,
-          previousValue: previousStatus ? { status: previousStatus } : null,
-          newValue: { status: record.status, notes: record.notes },
-        }),
-      );
-
-      return {
-        message: 'Asistencia corregida exitosamente por el administrador',
-        attendance: record,
-      };
-    });
+  private correctionView(record: Attendance) {
+    return {
+      id: record.id,
+      status: record.status,
+      markedAt: record.markedAt,
+      notes: record.notes,
+    };
   }
 }
