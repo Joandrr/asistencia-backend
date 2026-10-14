@@ -12,13 +12,13 @@ import { UserRole } from '../entities/user.entity';
 
 export class CreateUserDto {
   @ApiProperty({
-    example: '1234567',
-    minLength: 7,
+    example: '123456',
+    minLength: 6,
     maxLength: 12,
-    pattern: '^\\d{7,12}$',
+    pattern: '^\\d{6,12}$',
   })
   @IsString()
-  @Matches(/^\d{7,12}$/)
+  @Matches(/^\d{6,12}$/)
   registrationNo!: string;
 
   @ApiProperty({ minLength: 8, example: 'initial-password' })

@@ -3,13 +3,13 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
   @ApiProperty({
-    example: '1234567',
-    minLength: 7,
+    example: '123456',
+    minLength: 6,
     maxLength: 12,
-    pattern: '^\\d{7,12}$',
+    pattern: '^\\d{6,12}$',
   })
   @IsString()
-  @Matches(/^\d{7,12}$/)
+  @Matches(/^\d{6,12}$/)
   registrationNo!: string;
 
   @ApiProperty({ example: 'your-password' })
