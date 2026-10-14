@@ -2,6 +2,7 @@ import {
   Check,
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -11,6 +12,10 @@ import { Module } from './module.entity';
 import { Attendance } from './attendance.entity';
 
 @Entity({ name: 'class_schedules' })
+@Index('UQ_class_schedules_module_date', ['moduleId', 'classDate'], {
+  unique: true,
+  where: '"deleted_at" IS NULL',
+})
 @Check('CHK_class_schedules_time_order', '"end_time" > "start_time"')
 @Check(
   'CHK_class_schedules_grace_time',

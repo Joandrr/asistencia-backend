@@ -36,7 +36,9 @@ async function seedDemoData(): Promise<void> {
     for (const name of moduleNames) {
       let mod = await moduleRepo.findOne({ where: { name } });
       if (!mod) {
-        mod = moduleRepo.create({ name, isActive: true });
+        // RN-01 allows a single active module (enforced by a unique index);
+        // demo modules are created inactive. The active one is set by importing.
+        mod = moduleRepo.create({ name, isActive: false });
         mod = await moduleRepo.save(mod);
       }
       createdModules.push(mod);

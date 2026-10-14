@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AcademicModulesModule } from './modules/academic-modules/academic-modules.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
@@ -24,6 +25,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     }),
     AuthModule,
     UsersModule,
+    AcademicModulesModule,
     AttendanceModule,
   ],
   controllers: [AppController],

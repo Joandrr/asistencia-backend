@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -12,6 +13,7 @@ import { Module } from './module.entity';
 import { Attendance } from './attendance.entity';
 
 @Entity({ name: 'enrollments' })
+@Index('IDX_enrollments_module', ['moduleId'])
 @Unique('UQ_enrollments_student_module', ['studentId', 'moduleId'])
 export class Enrollment extends BaseEntity {
   @Column({ name: 'student_id', type: 'bigint' })
