@@ -34,6 +34,7 @@ import {
 } from './excel/parse-students';
 import { readSheet } from './excel/read-sheet';
 import { AddModuleStudentDto } from './dto/add-module-student.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { hashPasswords } from './password-hasher';
 import { ImportFiles } from './xlsx-upload';
 
@@ -108,6 +109,172 @@ export class AcademicModulesService {
         lastDate: range?.lastDate ?? null,
       },
     };
+  }
+
+  /** Lists active and closed modules with their preserved roster and dates. */
+  async listModules() {
+    const modules = await this.modules.find({ order: { createdAt: 'DESC' } });
+    if (modules.length === 0) return [];
+
+    const ids = modules.map((module) => module.id);
+    const [enrollmentCounts, scheduleStats] = await Promise.all([
+      this.enrollments
+        .createQueryBuilder('enrollment')
+        .select('enrollment.moduleId', 'moduleId')
+        .addSelect('COUNT(*)', 'count')
+        .where('enrollment.moduleId IN (:...ids)', { ids })
+        .groupBy('enrollment.moduleId')
+        .getRawMany<{ moduleId: string; count: string }>(),
+      this.schedules
+        .createQueryBuilder('schedule')
+        .select('schedule.moduleId', 'moduleId')
+        .addSelect('COUNT(*)', 'count')
+        .addSelect(
+          "TO_CHAR(MIN(schedule.classDate), 'YYYY-MM-DD')",
+          'firstDate',
+        )
+        .addSelect("TO_CHAR(MAX(schedule.classDate), 'YYYY-MM-DD')", 'lastDate')
+        .where('schedule.moduleId IN (:...ids)', { ids })
+        .groupBy('schedule.moduleId')
+        .getRawMany<{
+          moduleId: string;
+          count: string;
+          firstDate: string | null;
+          lastDate: string | null;
+        }>(),
+    ]);
+
+    const studentsByModule = new Map(
+      enrollmentCounts.map((row) => [row.moduleId, Number(row.count)]),
+    );
+    const schedulesByModule = new Map(
+      scheduleStats.map((row) => [row.moduleId, row]),
+    );
+    return modules.map((module) => {
+      const stats = schedulesByModule.get(module.id);
+      return {
+        id: module.id,
+        name: module.name,
+        status: module.isActive ? 'active' : 'closed',
+        isActive: module.isActive,
+        activatedAt: module.createdAt,
+        graceMinutes: module.graceMinutes,
+        studentsCount: studentsByModule.get(module.id) ?? 0,
+        schedulesCount: Number(stats?.count ?? 0),
+        firstDate: stats?.firstDate ?? null,
+        lastDate: stats?.lastDate ?? null,
+      };
+    });
+  }
+
+  async getModuleStudents(moduleId: string) {
+    const module = await this.modules.findOne({ where: { id: moduleId } });
+    if (!module) throw new NotFoundException('No se encontró el módulo');
+    const enrollments = await this.enrollments
+      .createQueryBuilder('enrollment')
+      .withDeleted()
+      .leftJoinAndSelect('enrollment.student', 'student')
+      .withDeleted()
+      .where('enrollment.moduleId = :moduleId', { moduleId })
+      .orderBy('student.fullName', 'ASC', 'NULLS LAST')
+      .addOrderBy('student.registrationNo', 'ASC')
+      .getMany();
+    return {
+      module: { id: module.id, name: module.name, isActive: module.isActive },
+      students: enrollments.map(({ student, assignedAt }) => ({
+        id: student.id,
+        registrationNo: student.registrationNo,
+        fullName: student.fullName,
+        email: student.email,
+        assignedAt,
+      })),
+    };
+  }
+
+  async getActiveModuleSchedules() {
+    const module = await this.getActiveModule();
+    if (!module) throw new NotFoundException('No hay un módulo activo');
+    const schedules = await this.schedules.find({
+      where: { moduleId: module.id },
+      order: { classDate: 'ASC', startTime: 'ASC' },
+    });
+    return { module: { id: module.id, name: module.name }, schedules };
+  }
+
+  async updateActiveSchedule(
+    scheduleId: string,
+    dto: UpdateScheduleDto,
+    actor: AuthenticatedUser,
+  ) {
+    if (dto.endTime <= dto.startTime) {
+      throw new UnprocessableEntityException(
+        'La hora de fin debe ser posterior a la hora de inicio.',
+      );
+    }
+    if (dto.classDate < this.today()) {
+      throw new UnprocessableEntityException(
+        'Solo se pueden editar clases de hoy en adelante.',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      await this.lockModuleChanges(manager);
+      const module = await manager
+        .getRepository(Module)
+        .findOne({ where: { isActive: true } });
+      if (!module) throw new NotFoundException('No hay un módulo activo');
+      const schedules = manager.getRepository(ClassSchedule);
+      const schedule = await schedules.findOne({
+        where: { id: scheduleId, moduleId: module.id },
+      });
+      if (!schedule)
+        throw new NotFoundException(
+          'No se encontró la clase del módulo activo',
+        );
+      if (schedule.classDate < this.today()) {
+        throw new UnprocessableEntityException(
+          'No se pueden editar clases pasadas.',
+        );
+      }
+      const duplicate = await schedules.findOne({
+        where: { moduleId: module.id, classDate: dto.classDate },
+      });
+      if (duplicate && duplicate.id !== schedule.id) {
+        throw new ConflictException(
+          'Ya existe una clase programada para esa fecha.',
+        );
+      }
+
+      const previousValue = {
+        classDate: schedule.classDate,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      };
+      schedule.classDate = dto.classDate;
+      schedule.startTime = dto.startTime;
+      schedule.endTime = dto.endTime;
+      schedule.graceTime = graceTimeFor(
+        dto.startTime,
+        dto.endTime,
+        module.graceMinutes,
+      );
+      const updated = await schedules.save(schedule);
+      await manager.getRepository(AuditLog).save({
+        userId: actor.id,
+        moduleId: module.id,
+        action: 'module.schedule_updated',
+        affectedEntity: 'class_schedules',
+        affectedRecordId: schedule.id,
+        previousValue,
+        newValue: {
+          classDate: dto.classDate,
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          graceTime: schedule.graceTime,
+        },
+      });
+      return { schedule: updated };
+    });
   }
 
   /** Validates both spreadsheets without writing anything (RF-16 preview). */

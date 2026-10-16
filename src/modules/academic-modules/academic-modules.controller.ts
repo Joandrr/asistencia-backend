@@ -37,6 +37,8 @@ import { UserRole } from '../users/entities/user.entity';
 import { AcademicModulesService } from './academic-modules.service';
 import { ActivateModuleDto } from './dto/activate-module.dto';
 import { UpdateGracePeriodDto } from './dto/update-grace-period.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
+import { AddModuleStudentDto } from './dto/add-module-student.dto';
 import { buildTemplate, TEMPLATE_FILENAMES } from './excel/templates';
 import type { TemplateKind } from './excel/templates';
 import {
@@ -79,6 +81,60 @@ export class AcademicModulesController {
   @ApiOkResponse({ description: 'Active module, or activeModule: null' })
   getActive() {
     return this.academicModulesService.getActiveModuleSummary();
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List active and closed modules (admin only)' })
+  @ApiOkResponse({ description: 'Module summaries with status and date range' })
+  listModules() {
+    return this.academicModulesService.listModules();
+  }
+
+  @Get(':id/students')
+  @ApiOperation({ summary: 'List students enrolled in a module (admin only)' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiOkResponse({ description: 'Historical roster for the requested module' })
+  getModuleStudents(@Param('id') moduleId: string) {
+    return this.academicModulesService.getModuleStudents(moduleId);
+  }
+
+  @Get('active/schedules')
+  @ApiOperation({
+    summary: 'List class dates for the active module (admin only)',
+  })
+  getActiveSchedules() {
+    return this.academicModulesService.getActiveModuleSchedules();
+  }
+
+  @Patch('active/schedules/:id')
+  @ApiOperation({
+    summary: 'Edit a future class date and time in the active module',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiOkResponse({
+    description: 'Updated schedule with recalculated grace time',
+  })
+  updateActiveSchedule(
+    @Param('id') scheduleId: string,
+    @Body() dto: UpdateScheduleDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.academicModulesService.updateActiveSchedule(
+      scheduleId,
+      dto,
+      actor,
+    );
+  }
+
+  @Post('active/students')
+  @ApiOperation({ summary: 'Add a student to the active module (admin only)' })
+  @ApiCreatedResponse({ description: 'Student enrolled in the active module' })
+  @ApiConflictResponse({ description: 'Student or email already exists' })
+  addStudentToActiveModule(
+    @Body() dto: AddModuleStudentDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.academicModulesService.addStudentToActiveModule(dto, actor);
   }
 
   @Patch('active/grace-period')
